@@ -247,15 +247,24 @@ static esp_err_t start_httpd(void) {
 
 static void ota_run(void) {
     ESP_LOGI(TAG, "启动 OTA 模式:Wi-Fi AP + HTTP 上传服务");
-    nvs_flash_init();                        // 失败也不阻塞 Wi-Fi
+
+    // NVS is best-effort: Wi-Fi keeps its own defaults, and we have no
+    // non-volatile settings to read, so a failed init must not block startup.
+    esp_err_t nerr = nvs_flash_init();
+    if (nerr != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_flash_init 返回 %s(非致命,继续)", esp_err_to_name(nerr));
+    }
+
     if (start_wifi_ap() != ESP_OK) {
-        ESP_LOGE(TAG, "Wi-Fi AP 启动失败");
-        return;
+        ESP_LOGE(TAG, "Wi-Fi AP 启动失败,重启回到装载器菜单");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();                       // 重启后 RTC 标志已清,回装载器菜单
     }
     vTaskDelay(pdMS_TO_TICKS(500));          // 等 AP 起来
     if (start_httpd() != ESP_OK) {
-        ESP_LOGE(TAG, "HTTP 服务启动失败");
-        return;
+        ESP_LOGE(TAG, "HTTP 服务启动失败,重启回到装载器菜单");
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        esp_restart();
     }
     ESP_LOGI(TAG, "OTA 就绪:手机连 AIPassport-OTA,浏览器开 http://192.168.4.1");
     // 阻塞在此:HTTP server 在自己的任务里跑,本任务挂起即可。

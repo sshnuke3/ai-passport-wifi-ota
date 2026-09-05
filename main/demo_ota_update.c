@@ -1,5 +1,6 @@
-// main/demo_ota_update.c —— 菜单里的「Wireless Update」入口页。
-// 进入即请求重启进入 OTA 模式(见 ota.c)。它本身不做 UI 交互。
+// main/demo_ota_update.c —— "Wireless Update" menu entry page.
+// Entering it arms a reboot into OTA mode (see ota.c). No auto-reboot:
+// the user must press OK to confirm, so the on-screen instructions are readable.
 #include "demo.h"
 #include "ota.h"
 #include "ui_pixel.h"
@@ -12,6 +13,7 @@
 static const char *TAG = "demo_ota_update";
 
 static lv_obj_t *s_scr;
+static bool s_await_confirm;          // true after enter; OK click triggers reboot
 
 void demo_ota_update_enter(void) {
     s_scr = ui_pixel_screen_create("WIRELESS UPDATE");
@@ -21,24 +23,25 @@ void demo_ota_update_enter(void) {
     lv_obj_set_width(txt, 196);
     lv_obj_set_style_text_font(txt, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(txt, lv_color_hex(UI_INK), 0);
-    // 双 slot 轮换:把「非当前」的那个分区当写入目标,装载器与玩法互为备份。
+    // Two-slot rotation: write to the slot we are NOT running from, so loader
+    // and play firmware back each other up.
     lv_label_set_text_fmt(txt,
-        "本次写入: %s\n\n"
-        "手机连热点 AIPassport-OTA\n密码 updateme\n浏览器开 192.168.4.1\n\n"
-        "上传 app 镜像\nFoloToy-AI-Passport.bin\n(不是 -full.bin)",
+        "Target: %s\n\n"
+        "Join Wi-Fi AP: AIPassport-OTA\npass: updateme\nopen http://192.168.4.1\n\n"
+        "Upload app image\nFoloToy-AI-Passport.bin\n(NOT -full.bin)\n\n"
+        "Press OK to reboot\ninto update mode",
         ota_is_running_factory() ? "ota_0" : "factory");
     lv_obj_align(txt, LV_ALIGN_TOP_LEFT, 4, 6);
 
     ui_pixel_mascot_create(s_scr, 101, 246);
     lv_screen_load(s_scr);
 
-    ESP_LOGI(TAG, "请求进入 OTA 模式,1 秒后重启");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    ota_request_reboot();                  // 内部 esp_restart,不返回
-    return;
+    s_await_confirm = true;
+    ESP_LOGI(TAG, "Wireless Update armed; waiting for OK to reboot into OTA mode");
 }
 
 void demo_ota_update_exit(void) {
+    s_await_confirm = false;
     if (s_scr) {
         lv_obj_delete(s_scr);
         s_scr = NULL;
@@ -46,17 +49,22 @@ void demo_ota_update_exit(void) {
 }
 
 void demo_ota_update_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
-    (void)btn;
-    (void)ev;
+    if (!s_await_confirm) return;
+    if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+        s_await_confirm = false;
+        ota_request_reboot();                  // internal esp_restart, does not return
+    }
 }
 
 // ---------------------------------------------------------------------------
-// 「Back to Loader」:把启动分区切回 factory(装载器)并重启。
-//
-// 双 slot 轮换的另一半。OTA 之后设备跑在 ota_0 的玩法上,玩法固件若不带 OTA 菜单,
-// 就再也回不去 —— 这个入口保证随时能回到装载器。已经在装载器上时只是提示。
+// "Back to Loader": flip the boot partition back to factory (the loader) and
+// reboot. The other half of the two-slot rotation. After OTA the device runs
+// the ota_0 play firmware; if that firmware lacks an OTA menu you could be
+// stuck — this entry guarantees you can always return to the loader. When
+// already on the loader it just shows a notice and lets you back out.
 // ---------------------------------------------------------------------------
 static lv_obj_t *s_revert_scr;
+static bool s_revert_await_confirm;
 
 void demo_ota_revert_enter(void) {
     s_revert_scr = ui_pixel_screen_create("BACK TO LOADER");
@@ -68,31 +76,29 @@ void demo_ota_revert_enter(void) {
     lv_obj_set_style_text_color(txt, lv_color_hex(UI_INK), 0);
 
     if (ota_is_running_factory()) {
+        s_revert_await_confirm = false;
         lv_label_set_text(txt,
-            "当前已运行在装载器\n(factory) 分区。\n\n"
-            "无需回退。\n\n"
-            "长按 OK 返回菜单。");
+            "Already on loader\n(factory) partition.\n\n"
+            "Nothing to revert.\n\n"
+            "Hold OK to return.");
     } else {
+        s_revert_await_confirm = true;
         lv_label_set_text(txt,
-            "当前运行: ota_0 玩法\n\n"
-            "即将切回装载器(factory)\n并重启。\n\n"
-            "切回后无线更新入口仍在。");
+            "Now running: ota_0 play\n\n"
+            "Will switch boot back\nto loader (factory)\nand reboot.\n\n"
+            "Press OK to revert");
     }
     lv_obj_align(txt, LV_ALIGN_TOP_LEFT, 4, 6);
 
     ui_pixel_mascot_create(s_revert_scr, 101, 246);
     lv_screen_load(s_revert_scr);
 
-    if (ota_is_running_factory()) {
-        return;                                  // 等用户长按 OK 返回
-    }
-
-    ESP_LOGI(TAG, "1 秒后切回装载器(factory)");
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    ota_revert_to_factory();                     // 内部 esp_restart,不返回
+    ESP_LOGI(TAG, "Back to Loader: %s",
+             s_revert_await_confirm ? "armed, waiting for OK" : "already on loader");
 }
 
 void demo_ota_revert_exit(void) {
+    s_revert_await_confirm = false;
     if (s_revert_scr) {
         lv_obj_delete(s_revert_scr);
         s_revert_scr = NULL;
@@ -100,6 +106,9 @@ void demo_ota_revert_exit(void) {
 }
 
 void demo_ota_revert_key(bsp_btn_t btn, bsp_btn_ev_t ev) {
-    (void)btn;
-    (void)ev;
+    if (!s_revert_await_confirm) return;
+    if (btn == BSP_BTN_OK && ev == BSP_BTN_CLICK) {
+        s_revert_await_confirm = false;
+        ota_revert_to_factory();               // internal esp_restart, does not return
+    }
 }

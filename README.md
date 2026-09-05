@@ -1,3 +1,7 @@
+<p align="right">
+  <strong>English</strong> · <a href="README.zh_CN.md">简体中文</a>
+</p>
+
 # AI Passport — Wi-Fi OTA Loader
 
 > **Status: not yet validated on real hardware.** The merged image builds and passes the

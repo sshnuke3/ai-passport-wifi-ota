@@ -1,14 +1,20 @@
 # AI Passport Wi-Fi OTA Loader — Cover Image Prompt
 
-封面图只在你**走 B（提交玩法社区）**时需要，本分支作为个人工具**用不到**。留档备用。
+> This is the **English default**. The Simplified Chinese version lives in
+> [COVER_PROMPT.zh_CN.md](COVER_PROMPT.zh_CN.md).
 
-## 适用生成器
+The cover image is only needed if you go down path B (submitting to the play
+community). This branch is a personal tool and does not use it, but the prompt
+is kept here for reference.
 
-- Midjourney / DALL·E 3 / 即梦 / Stable Diffusion 通用英文 prompt
-- 比例为官方社区常用的 1:1（封面卡片）或 16:9（横幅）
-- 风格与官方"答案之书"、"口袋番茄钟"等封面保持像素风/低饱和度调性
+## Supported generators
 
-## 英文 prompt（推荐）
+- Midjourney / DALL·E 3 / Jimeng / Stable Diffusion — universal English prompts
+- Aspect ratio: 1:1 (cover card) or 16:9 (banner), matching the official community
+- Style: keep the pixel-art / low-saturation tone of the official "answer book"
+  and "pocket tomato clock" covers
+
+## English prompt (recommended)
 
 ```
 Pixel-art style product cover, no text overlay.
@@ -22,18 +28,7 @@ deep slate gradient. Mood: technical, calm, slightly futuristic.
 8-bit pixel aesthetic, low-poly edges, soft bloom. 1024x1024.
 ```
 
-## 中文 prompt（即梦 / 通义）
-
-```
-像素风产品封面，无文字。一张透明外壳的"AI Passport"智能卡片斜放在哑光
-深色桌面上，从 3/4 角度俯视。卡片顶部发出三圈柔和的青色 Wi-Fi 信号波纹，
-向四周扩散。卡片底部有一个绿色圆形下载图标（箭头朝下嵌入圆内），暗示
-"无线更新"。卡片自带屏幕发出暖琥珀色背光。背景是深板岩蓝渐变。
-调性：技术、冷静、略带未来感。8-bit 像素艺术，低多边形轮廓，柔和辉光。
-1024×1024。
-```
-
-## 备用：极简单色版（强抗审查 / 老设备 e-ink 风格）
+## Backup: minimal monochrome version
 
 ```
 Black square background. Centered: a transparent card outline in
@@ -42,15 +37,16 @@ white. One green check mark inside a circle at the bottom-right
 corner. No text. 512x512, monochrome except cyan and green.
 ```
 
-## 不推荐的风格
+## Styles to avoid
 
-- 真实摄影风（和官方像素风调性不符）
-- 蓝色企业 SaaS 渐变（官方玩法从不这样）
-- 含 "OTA / Wi-Fi / 更新" 文字的封面（社区里其它玩法几乎不放字）
+- Real photography (does not match the official pixel-art tone)
+- Blue enterprise SaaS gradients (official play covers never do this)
+- Covers with the words "OTA / Wi-Fi / update" (other community plays rarely put text on covers)
 
-## 出图后
+## After generating
 
-正式上传前建议：
-1. 缩到 1080×1080 之内（社区文档要求 ≤10 MiB，1K 平方远低于上限但保持清晰）
-2. 用 `file` 命令确认 MIME（PNG 或 JPEG 或 WebP 三选一）
-3. 自己拿官方 Web Flasher 跑一遍截图验证辨识度（白底/灰底/手机端都要看）
+Before uploading, it is recommended to:
+
+1. Resize to within 1080×1080 (community docs require ≤10 MiB; 1K square is well under but stays sharp)
+2. Use `file` to confirm the MIME type (PNG, JPEG, or WebP)
+3. Run it once through the official Web Flasher and screenshot to verify legibility (white / grey / mobile backgrounds)
