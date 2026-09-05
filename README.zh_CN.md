@@ -4,6 +4,10 @@
 
 # AI Passport — Wi-Fi OTA 装载器
 
+> **状态：尚未真机验证。** 合并镜像能编译通过，也过了官方 `tools/verify_firmware.py` 门禁，
+> 但[真机安全清单](#真机安全清单必须确认)里的三项还没跑完。刷入意味着重新分区。没有 USB
+> 救砖条件的话，先别刷。
+
 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport) 的修改版，给 AI Passport 加了一条
 Wi-Fi OTA 通道。第一次 USB 烧入后，后续玩法可以走无线推送，不再需要插线。
 

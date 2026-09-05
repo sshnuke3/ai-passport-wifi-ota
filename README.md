@@ -1,5 +1,11 @@
 # AI Passport — Wi-Fi OTA Loader
 
+> **Status: not yet validated on real hardware.** The merged image builds and passes the
+> official `tools/verify_firmware.py` gate, but the three checks in
+> [Safety checklist](#safety-checklist-must-be-verified-on-real-hardware) are still open.
+> Flashing this to a card means re-partitioning it. Do not flash a card you cannot afford to
+> recover over USB.
+
 A modified build of [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport) that adds an
 over-the-air firmware update channel over Wi-Fi. Once installed on a card, future plays can be
 pushed to the device over the local network — no USB cable required after the first flash.
