@@ -21,7 +21,8 @@ Wi-Fi OTA 通道。第一次 USB 烧入后，后续玩法可以走无线推送�
 - 菜单新增 `Wireless Update` 入口。选中即写 RTC 标志后软重启，进 OTA 模式。
 - OTA 模式**不初始化 LVGL**，起一个 AP (`AIPassport-OTA` / 密码 `updateme`) 和一个
   `esp_http_server`，监听 `http://192.168.4.1/`。
-- 通过 `/update` POST 固件镜像，写入 `ota_0`，切换启动分区，重启后跑新固件。
+- 通过 `/update` POST **应用镜像**，写入「当前没在跑」的那个槽，切换启动分区，重启后跑新固件。
+- 菜单新增 `Back to Loader`：把启动分区切回 `factory` 并重启，任何时候都能回到带 OTA 的装载器。
 - 任意时刻长按 `UP` 5 秒仍可进官方 Recovery——硬件级唯一救砖通道，本分支保留。
 
 ## 为什么做这个
@@ -36,10 +37,10 @@ Wi-Fi OTA 通道。第一次 USB 烧入后，后续玩法可以走无线推送�
 ```
 nvs         0x009000  24 KB
 phy_init   0x00f000   4 KB
-factory    0x010000   3 MB   ← 主 app 槽，本分支装在这里
+factory    0x010000   3 MB   ← A 槽：装载器（本分支装这里）
 otadata    0x310000   8 KB   ← 新增，OTA 簿记
 cardid     0x356000  16 KB   ← 受保护，设备身份
-ota_0      0x360000   3 MB   ← 新增，OTA 目标槽
+ota_0      0x360000   3 MB   ← B 槽：另一个 app 槽
 recovery   0x700000   1 MB   ← 受保护，官方 Recovery
 ```
 
@@ -70,10 +71,30 @@ python tools/verify_firmware.py build
 
 1. 卡片里走到 `Wireless Update`，按 `OK`。屏幕显示 AP 名和密码后自动重启进 OTA 模式。
 2. 手机连 `AIPassport-OTA` Wi-Fi（密码 `updateme`）。
-3. 浏览器打开 `http://192.168.4.1/`，选你编译好的 `FoloToy-AI-Passport-full.bin`，提交。
-4. 卡片把镜像写入 `ota_0`，切换启动分区，重启后跑新玩法。
+3. 浏览器打开 `http://192.168.4.1/`，上传 **`build/FoloToy-AI-Passport.bin`**（纯应用镜像，
+   **不是** `FoloToy-AI-Passport-full.bin`），提交。
+4. 卡片把镜像写进「当前没在跑」的那个槽，切换启动分区，重启后跑新玩法。
 
-> OTA 推的也是**合并镜像**，和官方工具要求一致。Recovery 和 cardid 永远不会被覆盖。
+> **传应用镜像，别传合并镜像。** 合并镜像 `-full.bin` 开头是 bootloader，写进 app 槽会得到
+> 一个起不来的分区。上传接口会拒绝超过目标分区大小的文件，也会拒绝首字节不是 `0xE9`
+> （ESP 镜像 magic）的文件。
+>
+> Recovery 和 cardid 永远不会被覆盖。
+
+### 双槽轮换
+
+8 MB flash 只塞得下一个额外的 3 MB app 槽，所以 `factory` 兼任第二个槽。写入目标永远是
+「当前没在跑」的那个：
+
+```
+跑 factory（装载器） --OTA--> 写 ota_0   --启动--> 玩法跑在 ota_0
+跑 ota_0 （玩法）    --OTA--> 写 factory --启动--> 装载器跑回 factory
+```
+
+`Back to Loader` 随时切回 `factory`。因为写入目标永远不是正在运行的分区，OTA 可以无限次
+进行——但**推上去的固件必须基于本分支编译**（同一份分区表 + 链上 `ota.c`）。拿官方原版树
+编译的玩法能正常跑，但它既没有 `Wireless Update` 也没有 `Back to Loader`，想回去只能靠
+长按 `UP` 进 Recovery 或插 USB。
 
 ## 真机安全清单（必须确认）
 
@@ -82,6 +103,8 @@ python tools/verify_firmware.py build
 - [ ] `otadata` 全 `0xFF` 时，bootloader 能否回退到 `factory` 正常启动。
 - [ ] 长按 `UP` 5 秒仍能进官方 Recovery——硬件级唯一救砖路径。
 - [ ] 工厂复位不会以把 `otadata` 擦坏的方式把卡片变砖。
+- [ ] OTA 推一次之后，`Back to Loader` 能切回装载器，且 OTA 菜单照常可用（双槽轮换能跑通
+      一个来回）。
 
 官方 `recovery_boot_hook` 没动，所以 (2) 理论上不受影响。
 
@@ -91,6 +114,8 @@ python tools/verify_firmware.py build
 - OTA 模式关 LVGL 是为了给 HTTP 传输留内存。ESP32-C3 约 400 KB SRAM 是硬约束，推 1.5 MB
   镜像在 802.11b/g 下耗时 20–60 秒。
 - 这条分支是**系统级修改**，作者**有意不**上玩法社区——见下文"它不是什么"。
+- 走 OTA 推的固件必须基于本分支编译。用官方原版树编译的玩法能跑，但没有 `Wireless Update`
+  也回不去装载器，只剩长按 `UP` 进 Recovery 或插 USB 两条路。
 
 ## 它不是什么
 
@@ -104,7 +129,7 @@ python tools/verify_firmware.py build
 partitions.csv            — 增加 otadata + ota_0
 main/ota.h                — 新增，公共 API
 main/ota.c                — 新增，AP + http server + esp_ota 流水线
-main/demo_ota_update.c    — 新增，菜单入口触发 OTA 重启
+main/demo_ota_update.c    — 新增，菜单入口触发 OTA 重启 + Back to Loader 页
 main/demo.h               — 增加 demo_ota_update_* 声明
 main/main.c               — 注册 demo + 接入 ota_mode_try_enter()
 main/CMakeLists.txt       — 增加 ota.c / demo_ota_update.c，REQUIRES app_update esp_partition esp_http_server

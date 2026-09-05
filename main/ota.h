@@ -20,3 +20,10 @@ bool ota_mode_try_enter(void);
 
 // 请求进入 OTA 模式:写请求标志并软重启。供菜单「Wireless Update」演示页调用。
 void ota_request_reboot(void);
+
+// 当前是否运行在 factory(装载器)分区。
+bool ota_is_running_factory(void);
+
+// 把启动分区切回 factory(装载器)并重启。供菜单「Back to Loader」演示页调用。
+// 已在 factory 上时什么都不做。
+void ota_revert_to_factory(void);

@@ -44,7 +44,8 @@ static const char *HTML_PAGE =
     "<body style='font-family:sans-serif;padding:1em'>"
     "<h2>AI Passport 无线刷机</h2>"
     "<p>设备热点: <b>AIPassport-OTA</b> / 密码: <b>updateme</b></p>"
-    "<p>上传完整合并镜像 <b>FoloToy-AI-Passport-full.bin</b>(从 0x0 起)。</p>"
+    "<p>上传 app 镜像 <b>FoloToy-AI-Passport.bin</b><br>"
+    "(build 目录里那个纯应用镜像,<b>不是</b> -full.bin 合并镜像)。</p>"
     "<input id=f type=file accept='.bin'><br><br>"
     "<button id=b disabled>选择 .bin 后点此上传</button>"
     "<p id=s>等待上传...</p>"
@@ -59,14 +60,33 @@ static const char *HTML_PAGE =
     "xhr.send(file)};"
     "</script></body></html>";
 
-static esp_err_t ota_begin(void) {
-    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
+// 本次 OTA 的写入目标。由 ota_select_target() 决定,整个上传过程不变。
+static const esp_partition_t *s_target;
+
+// 双 slot 轮换:当前跑 factory → 写 ota_0;当前跑 ota_0 → 写 factory。
+//
+// 这里不能用 esp_ota_get_next_update_partition():它只在 OTA slot 之间转,而本分区表
+// 只有一个 ota_0(8 MB flash 塞不下第二个 3 MB slot)。跑在 ota_0 时它返回的还是
+// ota_0 自己,第二次 OTA 会擦掉正在 XIP 执行的代码 —— 等于自杀。
+// 把 factory 当第二个 slot 用,装载器和玩法互为备份,才能无限次 OTA。
+static const esp_partition_t *ota_select_target(void) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+        return esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                        ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
+    }
+    return esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                    ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+}
+
+static esp_err_t ota_begin(const esp_partition_t *part) {
     if (!part) {
-        ESP_LOGE(TAG, "找不到 ota_0 更新分区");
+        ESP_LOGE(TAG, "找不到可写的 OTA 目标分区");
         return ESP_ERR_NOT_FOUND;
     }
-    s_total   = part->size;
-    s_written = 0;
+    s_target   = part;
+    s_total    = part->size;
+    s_written  = 0;
     ESP_LOGI(TAG, "OTA 目标分区 %s @ 0x%lx, 大小 %u", part->label,
              (unsigned long)part->address, part->size);
     return esp_ota_begin(part, OTA_SIZE_UNKNOWN, &s_ota_handle);
@@ -109,13 +129,29 @@ static esp_err_t update_get_handler(httpd_req_t *req) {
 }
 
 static esp_err_t update_post_handler(httpd_req_t *req) {
-    esp_err_t err = ota_begin();
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    const esp_partition_t *part    = ota_select_target();
+
+    ESP_LOGI(TAG, "当前运行分区: %s", running ? running->label : "未知");
+
+    // 合并镜像(bootloader + 分区表 + app)必然大于单个 app 分区,先挡掉。
+    // 放过去的后果是目标分区开头变成 bootloader,下次启动必崩,只能进 Recovery 救。
+    if (part && req->content_len > part->size) {
+        ESP_LOGE(TAG, "镜像 %u 字节 > 目标分区 %u 字节,像是合并镜像",
+                 (unsigned)req->content_len, (unsigned)part->size);
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                            "image bigger than partition: upload build/FoloToy-AI-Passport.bin, NOT the merged -full.bin");
+        return ESP_OK;
+    }
+
+    esp_err_t err = ota_begin(part);
     if (err != ESP_OK) {
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "ota_begin failed");
         return ESP_OK;
     }
 
     size_t remaining = req->content_len;
+    bool   first_chunk = true;
     char *buf = malloc(OTA_CHUNK);
     if (!buf) {
         esp_ota_abort(s_ota_handle);
@@ -132,6 +168,19 @@ static esp_err_t update_post_handler(httpd_req_t *req) {
             free(buf);
             esp_ota_abort(s_ota_handle);
             return ESP_FAIL;
+        }
+        if (first_chunk) {
+            // ESP 应用镜像首字节必须是 0xE9。传成 .elf / zip / 合并镜像都拦在这里。
+            if ((unsigned char)buf[0] != 0xE9) {
+                ESP_LOGE(TAG, "首字节 0x%02x,不是 ESP 应用镜像(应 0xE9)",
+                         (unsigned char)buf[0]);
+                free(buf);
+                esp_ota_abort(s_ota_handle);
+                httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST,
+                                    "not an ESP app image: bad magic (expect 0xE9)");
+                return ESP_OK;
+            }
+            first_chunk = false;
         }
         err = esp_ota_write(s_ota_handle, buf, (size_t)got);
         if (err != ESP_OK) {
@@ -156,8 +205,7 @@ static esp_err_t update_post_handler(httpd_req_t *req) {
         return ESP_OK;
     }
 
-    const esp_partition_t *part = esp_ota_get_next_update_partition(NULL);
-    err = esp_ota_set_boot_partition(part);
+    err = esp_ota_set_boot_partition(s_target);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "set_boot_partition 失败: %s", esp_err_to_name(err));
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "set_boot failed");
@@ -225,5 +273,39 @@ bool ota_mode_try_enter(void) {
 void ota_request_reboot(void) {
     s_ota_requested = true;
     ESP_LOGI(TAG, "请求 OTA 模式,即将软重启");
+    esp_restart();
+}
+
+bool ota_is_running_factory(void) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    return running && running->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY;
+}
+
+// 把启动分区切回 factory(装载器)并重启。
+//
+// 这是双 slot 轮换的另一半:OTA 把玩法推进 ota_0 后,设备跑在 ota_0 上;想再 OTA
+// 一次,就得先回到 factory(或直接在玩法里再 OTA —— 那会写回 factory)。这个入口
+// 保证任何时候都能回到带 OTA 菜单的装载器。
+//
+// 写 factory 失败也不危险:otadata 仍指向 ota_0,当前固件照常能启动。
+void ota_revert_to_factory(void) {
+    const esp_partition_t *factory =
+        esp_partition_find_first(ESP_PARTITION_TYPE_APP,
+                                 ESP_PARTITION_SUBTYPE_APP_FACTORY, NULL);
+    if (!factory) {
+        ESP_LOGE(TAG, "找不到 factory 分区");
+        return;
+    }
+    if (ota_is_running_factory()) {
+        ESP_LOGW(TAG, "已在 factory(装载器)上运行,无需回退");
+        return;
+    }
+
+    esp_err_t err = esp_ota_set_boot_partition(factory);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "切回 factory 失败: %s", esp_err_to_name(err));
+        return;
+    }
+    ESP_LOGI(TAG, "已切回装载器(factory),即将重启");
     esp_restart();
 }

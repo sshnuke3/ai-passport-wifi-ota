@@ -28,6 +28,7 @@ static const demo_entry_t DEMOS[] = {
     { "BLE",     demo_ble_enter,     demo_ble_exit,     demo_ble_key     },
     { "Low Power", demo_low_power_enter, demo_low_power_exit, demo_low_power_key },
     { "Wireless Update", demo_ota_update_enter, demo_ota_update_exit, demo_ota_update_key },
+    { "Back to Loader",  demo_ota_revert_enter, demo_ota_revert_exit, demo_ota_revert_key  },
 };
 #define DEMO_COUNT (sizeof(DEMOS) / sizeof(DEMOS[0]))
 
@@ -139,7 +140,9 @@ void app_main(void) {
     s_ok[4] = true;                                    // 页面内按需初始化并显示错误
     s_ok[5] = true;
     s_ok[6] = true;
-    s_ok[DEMO_COUNT - 1] = true;                       // Wireless Update:始终可进入
+    // 最后两项是 OTA 相关,不依赖外设:始终可进入。
+    s_ok[7] = true;                                    // Wireless Update
+    s_ok[8] = true;                                    // Back to Loader
 
     if (bsp_lvgl_lock(1000)) { enter_menu(); bsp_lvgl_unlock(); }
 

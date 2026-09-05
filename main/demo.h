@@ -35,3 +35,6 @@ void demo_low_power_key(bsp_btn_t btn, bsp_btn_ev_t ev);
 
 void demo_ota_update_enter(void); void demo_ota_update_exit(void);
 void demo_ota_update_key(bsp_btn_t btn, bsp_btn_ev_t ev);
+
+void demo_ota_revert_enter(void); void demo_ota_revert_exit(void);
+void demo_ota_revert_key(bsp_btn_t btn, bsp_btn_ev_t ev);

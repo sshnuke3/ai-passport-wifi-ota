@@ -22,8 +22,11 @@ launcher) intended to act as the carrier for any subsequent OTA-pushed firmware.
   into OTA mode.
 - OTA mode does **not** initialise LVGL. It brings up an AP (`AIPassport-OTA` /
   password `updateme`) and an `esp_http_server` instance at `http://192.168.4.1/`.
-- POST a firmware image to `/update` (or use the built-in upload page). It is written into
-  `ota_0`, the boot partition is switched, and the device reboots into the new image.
+- POST an **app image** (`build/FoloToy-AI-Passport.bin`) to `/update` (or use the built-in
+  upload page). It is written to the slot the device is *not* running from, the boot partition
+  is flipped, and the device reboots into the new image.
+- Adds a `Back to Loader` entry. It flips the boot partition back to `factory` and reboots, so
+  the OTA-capable loader is always reachable.
 - Long-press `UP` for five seconds at any time to enter the official Recovery — the only
   hardware-level un-bricking path. This hook is preserved.
 
@@ -41,10 +44,10 @@ still passes `tools/verify_firmware.py`.
 ```
 nvs         0x009000  24 KB
 phy_init   0x00f000   4 KB
-factory    0x010000   3 MB   ← primary app slot (this branch lives here)
+factory    0x010000   3 MB   ← slot A: the loader (this branch lives here)
 otadata    0x310000   8 KB   ← NEW, OTA bookkeeping
 cardid     0x356000  16 KB   ← protected, device identity
-ota_0      0x360000   3 MB   ← NEW, OTA target slot
+ota_0      0x360000   3 MB   ← slot B: the other app slot
 recovery   0x700000   1 MB   ← protected, official Recovery
 ```
 
@@ -77,13 +80,33 @@ is the artifact to flash.
 1. On the card, navigate to `Wireless Update` and press `OK`. The screen will show the AP
    name and password, then the device reboots into OTA mode.
 2. On your phone, connect to the `AIPassport-OTA` Wi-Fi (password `updateme`).
-3. Open `http://192.168.4.1/` in the browser. Pick a `FoloToy-AI-Passport-full.bin` from your
-   phone's storage and submit.
-4. The card writes the image to `ota_0`, flips the boot partition, and reboots. The new play
-   starts on the next boot.
+3. Open `http://192.168.4.1/` in the browser and upload **`build/FoloToy-AI-Passport.bin`** —
+   the plain app image, **not** `FoloToy-AI-Passport-full.bin`.
+4. The card writes the image to the slot it is not running from, flips the boot partition, and
+   reboots. The new play starts on the next boot.
 
-> OTA push uploads the **merged** firmware, the same artifact as the official tool. The
-> recovery and identity partitions are never overwritten.
+> **Upload the app image, not the merged image.** The merged `-full.bin` begins with the
+> bootloader; written into an app slot it yields an unbootable partition. The handler rejects
+> anything larger than the target partition and anything whose first byte is not the `0xE9`
+> ESP image magic.
+>
+> The recovery and identity partitions are never overwritten.
+
+### Two-slot rotation
+
+8 MB of flash fits only one extra 3 MB app slot, so `factory` doubles as the second slot. The
+write target is always the slot the device is *not* running from:
+
+```
+running factory (loader)  --OTA-->  write ota_0   --boot-->  play runs from ota_0
+running ota_0   (play)    --OTA-->  write factory --boot-->  loader runs from factory
+```
+
+`Back to Loader` flips back to `factory` at any time. Since the running partition is never the
+write target, OTA works indefinitely — but **everything you push must be built from this
+branch** (same partition table, `ota.c` linked in). A play built from the stock tree boots
+fine yet has neither `Wireless Update` nor `Back to Loader`; the only way out is the Recovery
+hook or USB.
 
 ## Safety checklist (must be verified on real hardware)
 
@@ -95,6 +118,8 @@ must be confirmed before relying on it:
 - [ ] Long-pressing `UP` for five seconds still enters official Recovery. This is the only
       hardware-level un-bricking path.
 - [ ] A factory reset does not corrupt `otadata` in a way that bricks the card.
+- [ ] After one OTA push, `Back to Loader` returns to the loader and the OTA menu still works
+      (i.e. the two-slot rotation round-trips).
 
 The official `recovery_boot_hook` is left untouched, so (2) should be fine in principle.
 
@@ -104,6 +129,9 @@ The official `recovery_boot_hook` is left untouched, so (2) should be fine in pr
   Do not enable `Wireless Update` in environments you do not trust.
 - OTA mode disables LVGL to keep memory headroom for the HTTP transfer. ~400 KB SRAM on
   ESP32-C3 is the binding constraint; pushing a 1.5 MB image takes 20–60 seconds over 802.11b/g.
+- Firmware pushed over OTA must be built from this branch. A play compiled from the stock tree
+  boots fine, but it has neither `Wireless Update` nor `Back to Loader`; the only way out is
+  the Recovery hook (hold `UP` 5 s) or USB.
 - This branch is a system-level modification. It is **not** listed on the official play
   community by intent — see "What it is not" below.
 
@@ -119,7 +147,7 @@ The official `recovery_boot_hook` is left untouched, so (2) should be fine in pr
 partitions.csv            — added otadata + ota_0
 main/ota.h                — new, public API
 main/ota.c                — new, AP + http server + esp_ota pipeline
-main/demo_ota_update.c    — new, menu entry that triggers OTA reboot
+main/demo_ota_update.c    — new, menu entry that triggers OTA reboot + Back to Loader page
 main/demo.h               — added demo_ota_update_* declarations
 main/main.c               — registered demo + wired ota_mode_try_enter()
 main/CMakeLists.txt       — added ota.c / demo_ota_update.c, REQUIRES app_update esp_partition esp_http_server
