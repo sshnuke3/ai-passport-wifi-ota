@@ -20,6 +20,7 @@
 static const char *TAG = "main";
 
 static const demo_entry_t DEMOS[] = {
+    { "Sprite Pet", demo_pet_enter, demo_pet_exit, demo_pet_key },
     { "Display", demo_display_enter, demo_display_exit, demo_display_key },
     { "Button",  demo_button_enter,  demo_button_exit,  demo_button_key  },
     { "Audio",   demo_audio_enter,   demo_audio_exit,   demo_audio_key   },
@@ -133,19 +134,30 @@ void app_main(void) {
     bsp_display_backlight(100);
 
     // 其余外设单项失败不阻塞:菜单里标 [FAIL],其他项照常可测。
-    s_ok[0] = true;                                   // Display 已确认可用
-    s_ok[1] = (bsp_button_init(on_key, NULL) == ESP_OK);
-    s_ok[2] = (bsp_audio_init() == ESP_OK);
-    s_ok[3] = (bsp_battery_init() == ESP_OK);
-    s_ok[4] = true;                                    // 页面内按需初始化并显示错误
-    s_ok[5] = true;
+    s_ok[0] = true;                                   // Sprite Pet:只依赖显示+按键
+    s_ok[1] = true;                                    // Display 已确认可用
+    s_ok[2] = (bsp_button_init(on_key, NULL) == ESP_OK);
+    s_ok[3] = (bsp_audio_init() == ESP_OK);
+    s_ok[4] = (bsp_battery_init() == ESP_OK);
+    s_ok[5] = true;                                    // 页面内按需初始化并显示错误
     s_ok[6] = true;
+    s_ok[7] = true;
+    s_ok[8] = true;
     // 最后两项是 OTA 相关,不依赖外设:始终可进入。
-    s_ok[7] = true;                                    // Wireless Update
-    s_ok[8] = true;                                    // Back to Loader
+    s_ok[9] = true;                                    // Wireless Update
+    s_ok[10] = true;                                   // Back to Loader
 
-    if (bsp_lvgl_lock(1000)) { enter_menu(); bsp_lvgl_unlock(); }
+    if (bsp_lvgl_lock(1000)) {
+        enter_menu();
+        // 本固件默认进入精灵球电子宠物;长按 OK 返回此菜单(含 OTA / Loader)。
+        s_active = 0;
+        if (s_mascot) ui_pixel_mascot_jump(s_mascot);
+        if (s_menu_scr) { lv_obj_delete(s_menu_scr); s_menu_scr = NULL; }
+        s_mascot = NULL;
+        DEMOS[0].enter();
+        bsp_lvgl_unlock();
+    }
 
-    ESP_LOGI(TAG, "就绪:Display=%d Button=%d Audio=%d Battery=%d",
-             s_ok[0], s_ok[1], s_ok[2], s_ok[3]);
+    ESP_LOGI(TAG, "就绪:Pet=%d Button=%d Audio=%d Battery=%d",
+             s_ok[0], s_ok[2], s_ok[3], s_ok[4]);
 }
