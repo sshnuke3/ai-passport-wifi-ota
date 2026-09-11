@@ -11,8 +11,10 @@
 [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport) 的修改版，给 AI Passport 加了一条
 Wi-Fi OTA 通道。第一次 USB 烧入后，后续玩法可以走无线推送，不再需要插线。
 
-**这不是一个玩法，而是一份系统级固件修改**（分区表 + 底层 launcher），用来作为后续 OTA
-玩法的基础。
+这份固件打包了两样东西：一是**系统级固件修改**（分区表 + 底层 launcher + Wi-Fi OTA 通道），
+作为后续 OTA 玩法的基础；二是内置的一个玩法——**精灵球电子宠物（Sprite Pet）**，已注册为
+开机默认 demo，所以第一次烧入后卡片会直接进宠物界面。见
+[内置玩法：精灵球电子宠物](#内置玩法精灵球电子宠物)。
 
 ## 它做什么
 
@@ -31,6 +33,21 @@ Wi-Fi OTA 通道。第一次 USB 烧入后，后续玩法可以走无线推送�
 插线。这条分支在不依赖任何闭源组件的前提下补上这个能力。
 
 **没有破坏官方小程序 BLE 安装契约**——合并镜像仍能通过 `tools/verify_firmware.py` 门禁。
+
+## 内置玩法：精灵球电子宠物
+
+**精灵球电子宠物（Sprite Pet）** 是一个养成类（Tamagotchi 式）虚拟宠物，随本固件打包，并设为
+开机默认 demo。第一次烧入后卡片直接进宠物，无需手动进菜单。
+
+- 一颗蛋喂一口就破壳；之后要喂饱、陪玩、哄睡、洗澡、治病。
+- 四条状态——饱食、开心、精力、清洁——会随时间悄悄下降，全靠你照顾。
+- 每次用心照料攒经验，从蛋一路进化到宝宝、少年、成年，最后变成闪紫光的星星形态。
+- 表情随心情变化：咧嘴笑、撇嘴、闭眼睡觉冒 Z 字，还是病恹恹地躺着。
+- 在球上按上下让它轻轻一弹；按 OK 开动作菜单（FEED / PLAY / SLEEP / WASH / CURE）；长按 OK
+  回主菜单。
+- 状态自动保存，下次开机接着养。
+
+源码见 `main/demo_pet.c`。该玩法已提交到 FoloToy 官方玩法社区（撰写时状态：待审核）。
 
 ## 分区布局
 
@@ -113,14 +130,16 @@ python tools/verify_firmware.py build
 - AP 只用 WPA2-PSK。任何拿到密码的人都能推固件。别在不信任的环境里启用 OTA。
 - OTA 模式关 LVGL 是为了给 HTTP 传输留内存。ESP32-C3 约 400 KB SRAM 是硬约束，推 1.5 MB
   镜像在 802.11b/g 下耗时 20–60 秒。
-- 这条分支是**系统级修改**，作者**有意不**上玩法社区——见下文"它不是什么"。
+- 这条分支是**系统级修改**，但内置的**精灵球电子宠物**玩法已提交到官方玩法社区（撰写时状态：
+  待审核）——见[内置玩法](#内置玩法精灵球电子宠物)。
 - 走 OTA 推的固件必须基于本分支编译。用官方原版树编译的玩法能跑，但没有 `Wireless Update`
   也回不去装载器，只剩长按 `UP` 进 Recovery 或插 USB 两条路。
 
 ## 它不是什么
 
-- 不是玩法。装上后没有可玩的游戏、工具或互动体验。
-- 不是官方功能。FoloToy 没审过也没背书。
+- 不只是装载器。它出厂就带一个玩法——**精灵球电子宠物**默认开机启动；OTA 通道的存在是为了
+  之后还能往上推更多玩法。
+- 不是官方功能。FoloToy 没审过也没背书（内置玩法仍在社区待审核）。
 - 不是 Recovery 的替代。OTA 失败就走 USB + Recovery。
 
 ## 文件改动
@@ -133,4 +152,6 @@ main/demo_ota_update.c    — 新增，菜单入口触发 OTA 重启 + Back to L
 main/demo.h               — 增加 demo_ota_update_* 声明
 main/main.c               — 注册 demo + 接入 ota_mode_try_enter()
 main/CMakeLists.txt       — 增加 ota.c / demo_ota_update.c，REQUIRES app_update esp_partition esp_http_server
+main/demo_pet.c           — 新增，精灵球电子宠物玩法，设为开机默认 demo
+main/demo.h               — 同时增加 demo_pet_* 声明
 ```

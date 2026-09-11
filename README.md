@@ -14,8 +14,11 @@ A modified build of [FoloToy/ai-passport](https://github.com/FoloToy/ai-passport
 over-the-air firmware update channel over Wi-Fi. Once installed on a card, future plays can be
 pushed to the device over the local network — no USB cable required after the first flash.
 
-This is **not a play**. It is a system-level firmware modification (partition layout + base
-launcher) intended to act as the carrier for any subsequent OTA-pushed firmware.
+This build carries two things: a system-level firmware modification (partition layout + base
+launcher + Wi-Fi OTA channel) that acts as the carrier for future OTA-pushed firmware, **and** a
+built-in play — **Sprite Pet** (精灵球电子宠物) — pre-registered as the boot demo, so the card
+boots straight into the pet after the first flash. See
+[Bundled play: Sprite Pet](#bundled-play-sprite-pet).
 
 ## What it does
 
@@ -42,6 +45,23 @@ that capability without depending on any closed-source component.
 
 It does **not** replace the official mini-program BLE install contract — the merged image
 still passes `tools/verify_firmware.py`.
+
+## Bundled play: Sprite Pet
+
+**Sprite Pet** (精灵球电子宠物) is a Tamagotchi-style virtual pet bundled in this build and set
+as the default boot demo. After the first flash the card opens straight into it — no menu
+navigation required.
+
+- An egg hatches with one feed; keep it fed, played with, tucked in, washed, and cured.
+- Four meters — Food, Fun, Energy, Clean — tick down over time and are on you to keep up.
+- Good care earns experience; the pet evolves from egg → baby → teen → adult → glowing star form.
+- The face reflects mood: a big grin, a pout, sleepy Z's, or a sickly slump.
+- Tap the ball up/down to make it bounce; press OK for the action menu
+  (FEED / PLAY / SLEEP / WASH / CURE); hold OK to return to the home menu.
+- State saves automatically, so the pet is waiting where you left it on next boot.
+
+Source: `main/demo_pet.c`. The play has been submitted to the official FoloToy play community
+(status: pending review at time of writing).
 
 ## Layout
 
@@ -136,13 +156,16 @@ The official `recovery_boot_hook` is left untouched, so (2) should be fine in pr
 - Firmware pushed over OTA must be built from this branch. A play compiled from the stock tree
   boots fine, but it has neither `Wireless Update` nor `Back to Loader`; the only way out is
   the Recovery hook (hold `UP` 5 s) or USB.
-- This branch is a system-level modification. It is **not** listed on the official play
-  community by intent — see "What it is not" below.
+- This branch is a system-level modification. The bundled **Sprite Pet** play has been submitted
+  to the official play community (status: pending review at time of writing) — see
+  [Bundled play](#bundled-play-sprite-pet).
 
 ## What it is not
 
-- Not a play. It does not contain a game, tool, or interactive experience on its own.
-- Not an official feature. FoloToy has not reviewed or blessed this branch.
+- Not *just* a loader. It does ship a play out of the box — **Sprite Pet** boots by default;
+  the OTA channel exists to push *more* plays on top of it later.
+- Not an official feature. FoloToy has not reviewed or blessed this branch (the bundled play is
+  still pending community review).
 - Not a replacement for the Recovery hook. If OTA fails, fall back to USB + Recovery.
 
 ## Files added / changed
@@ -155,4 +178,6 @@ main/demo_ota_update.c    — new, menu entry that triggers OTA reboot + Back to
 main/demo.h               — added demo_ota_update_* declarations
 main/main.c               — registered demo + wired ota_mode_try_enter()
 main/CMakeLists.txt       — added ota.c / demo_ota_update.c, REQUIRES app_update esp_partition esp_http_server
+main/demo_pet.c           — new, Sprite Pet virtual-pet play, registered as the default boot demo
+main/demo.h               — also added demo_pet_* declarations
 ```
